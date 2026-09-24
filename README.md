@@ -15,6 +15,8 @@ Current version: **1.0.0** — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 
+Pixera Control is a director / GO pad for Pixera 25+ shows (macOS and Windows).
+
 Get the latest build from the [GitHub Releases](https://github.com/desertdognl/pixera-control/releases) page:
 
 | Platform | File |
