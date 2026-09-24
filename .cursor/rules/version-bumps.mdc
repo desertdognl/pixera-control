@@ -1,0 +1,19 @@
+---
+description: Bump the app version whenever a user-visible fix or feature ships
+alwaysApply: true
+---
+
+# Version bumps
+
+Whenever you ship a fix or feature the user can see in the running app, bump the version in the same turn.
+
+1. Patch bump for fixes and small additions (`0.1.2` → `0.1.3`). Minor bump only for larger feature sets.
+2. Update all of these together:
+   - `package.json` `version`
+   - `src/shared/version.ts` `APP_VERSION`
+   - `CHANGELOG.md` new section at the top of the release list
+   - `README.md` current-version line when it mentions the version
+3. Rebuild and update the local Mac app: `npm run pack:mac` (or `npm run build && node scripts/update-mac-app.mjs`).
+4. Tell the user the new version number and to quit and reopen (or open) `release/mac-arm64/Pixera Control.app`.
+
+Never leave user-visible changes on the same version string as the previous build. The titlebar / Settings version is how they confirm the update landed.
