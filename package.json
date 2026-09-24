@@ -17,8 +17,8 @@
     "predist:mac": "npm run clean:release",
     "predist:win": "npm run clean:release",
     "pack:mac": "npm run icon:mac && npm run build && node scripts/update-mac-app.mjs",
-    "dist:mac": "npm run build && electron-builder --mac zip --arm64",
-    "dist:win": "npm run build && electron-builder --win --x64",
+    "dist:mac": "npm run build && electron-builder --mac zip --arm64 --publish never",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never",
     "dist": "npm run dist:mac && npm run dist:win"
   },
   "devDependencies": {
