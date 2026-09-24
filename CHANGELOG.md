@@ -3,6 +3,37 @@
 All notable changes to Pixera Control are documented here.
 
 
+## 1.0.0 — 2026-09-24
+
+### Added
+- First public GitHub release (macOS arm64 zip + Windows x64 installer and zip)
+- Install instructions for unsigned Mac (Gatekeeper / `xattr`) and Windows (SmartScreen)
+
+### Notes
+- App packages contain only the built app (`out/` + `package.json`) — no backlog or internal docs
+- Notarized / signed Mac installer still needs an Apple Developer account
+
+## 0.4.3 — 2026-09-24
+
+### Changed
+- Grid buttons: GO on top, timeline at the bottom; middle line only when a cue is assigned (`cue: name`)
+
+## 0.4.2 — 2026-09-24
+
+### Changed
+- Top bar splits View (List / Director / Grid) from App (Refresh / Fullscreen / Settings)
+
+## 0.4.1 — 2026-09-24
+
+### Changed
+- Grid buttons always show GO; cue name and timeline sit on separate lines below
+
+## 0.4.0 — 2026-09-24
+
+### Added
+- Grid view: Companion-style custom GO buttons — each button is assigned to one cue and fires it on press
+- Edit grid: Add / Assign / Clear / Remove, drag to reorder (saved in settings)
+
 ## 0.3.2 — 2026-09-24
 
 ### Fixed

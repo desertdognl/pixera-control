@@ -11,7 +11,8 @@ import {
   type LayerItem,
   type TimelineItem,
   type Transport,
-  type ViewMode
+  type ViewMode,
+  type GoGridButton
 } from '@shared/types'
 import { APP_VERSION } from '@shared/version'
 import { DemoShow } from '@shared/demoShow'
@@ -161,6 +162,10 @@ export default function App() {
   const [dragPadId, setDragPadId] = useState<string | null>(null)
   const [armedByTimeline, setArmedByTimeline] = useState<Record<string, string>>({})
   const [directorEdit, setDirectorEdit] = useState(false)
+  const [gridEdit, setGridEdit] = useState(false)
+  const [dragGridId, setDragGridId] = useState<string | null>(null)
+  const [assigningButtonId, setAssigningButtonId] = useState<string | null>(null)
+  const [assignTimelineId, setAssignTimelineId] = useState('')
 
   useEffect(() => {
     const offState = control.onState(setLive)
@@ -207,7 +212,12 @@ export default function App() {
   const nextCue = selected && selectedIndex >= 0 ? selected.cues[selectedIndex + 1] : undefined
   const prevCue = selected && selectedIndex > 0 ? selected.cues[selectedIndex - 1] : undefined
   const goLabel = selectedCue?.name?.trim() ? `GO · ${selectedCue.name.trim()}` : 'GO'
-  const viewMode: ViewMode = settings.viewMode === 'director' ? 'director' : 'list'
+  const viewMode: ViewMode =
+    settings.viewMode === 'director'
+      ? 'director'
+      : settings.viewMode === 'grid'
+        ? 'grid'
+        : 'list'
 
   useEffect(() => {
     if (!selected) {
@@ -308,6 +318,62 @@ export default function App() {
     })
   }
 
+  async function persistGoGrid(buttons: GoGridButton[]) {
+    await persist({ ...settings, goGridButtons: buttons })
+  }
+
+  async function addGoGridButton() {
+    const id = `grid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const next = [...settings.goGridButtons, { id, timelineId: '', cueId: '' }]
+    await persistGoGrid(next)
+    setAssigningButtonId(id)
+    setAssignTimelineId(live.timelines[0]?.id || '')
+  }
+
+  async function removeGoGridButton(buttonId: string) {
+    await persistGoGrid(settings.goGridButtons.filter((button) => button.id !== buttonId))
+    if (assigningButtonId === buttonId) {
+      setAssigningButtonId(null)
+      setAssignTimelineId('')
+    }
+  }
+
+  async function assignGoGridButton(buttonId: string, timelineId: string, cueId: string) {
+    await persistGoGrid(
+      settings.goGridButtons.map((button) =>
+        button.id === buttonId ? { ...button, timelineId, cueId } : button
+      )
+    )
+    setAssigningButtonId(null)
+    setAssignTimelineId('')
+  }
+
+  async function clearGoGridButton(buttonId: string) {
+    await persistGoGrid(
+      settings.goGridButtons.map((button) =>
+        button.id === buttonId ? { ...button, timelineId: '', cueId: '' } : button
+      )
+    )
+  }
+
+  async function reorderGoGrid(fromId: string, toId: string) {
+    if (fromId === toId) return
+    const ids = settings.goGridButtons.map((button) => button.id)
+    const from = ids.indexOf(fromId)
+    const to = ids.indexOf(toId)
+    if (from < 0 || to < 0) return
+    const next = [...settings.goGridButtons]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    await persistGoGrid(next)
+  }
+
+  function resolveGoGridButton(button: GoGridButton) {
+    const timeline = live.timelines.find((item) => item.id === button.timelineId)
+    const cue = timeline?.cues.find((item) => item.id === button.cueId)
+    return { timeline, cue }
+  }
+
   function armedCueFor(timeline: TimelineItem) {
     const armedId = armedByTimeline[timeline.id]
     return (
@@ -322,7 +388,9 @@ export default function App() {
   }
 
   return (
-    <div className={`app ${viewMode === 'director' ? 'is-director' : ''}`}>
+    <div
+      className={`app ${viewMode === 'director' ? 'is-director' : ''} ${viewMode === 'grid' ? 'is-grid' : ''}`}
+    >
       <header className="topbar">
         <div className="brand">
           <BrandLink className="brand-mark" src="./icon.png" alt="Desert Dog" />
@@ -370,7 +438,8 @@ export default function App() {
         </div>
         <div className="toolbar">
           {live.status === 'connected' ? (
-            <>
+            <div className="toolbar-group toolbar-views">
+              <span className="toolbar-label">View</span>
               <div className="view-toggle" role="group" aria-label="View">
                 <button
                   className={`ghost pressable ${viewMode === 'list' ? 'is-active-view' : ''}`}
@@ -384,7 +453,18 @@ export default function App() {
                 >
                   Director
                 </button>
+                <button
+                  className={`ghost pressable ${viewMode === 'grid' ? 'is-active-view' : ''}`}
+                  onClick={() => void setViewMode('grid')}
+                >
+                  Grid
+                </button>
               </div>
+            </div>
+          ) : null}
+          <div className="toolbar-group toolbar-app">
+            <span className="toolbar-label">App</span>
+            {live.status === 'connected' ? (
               <button
                 className="ghost pressable"
                 disabled={refreshing}
@@ -393,27 +473,29 @@ export default function App() {
               >
                 {refreshing ? 'Refreshing…' : 'Refresh'}
               </button>
-            </>
-          ) : null}
-          <button
-            className="ghost"
-            onClick={async () => {
-              const next = !fullscreen
-              await control.setFullscreen(next)
-              setFullscreen(next)
-            }}
-          >
-            {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </button>
-          <button className="ghost" onClick={() => setOpen(true)}>
-            Settings
-          </button>
+            ) : null}
+            <button
+              className="ghost pressable"
+              onClick={async () => {
+                const next = !fullscreen
+                await control.setFullscreen(next)
+                setFullscreen(next)
+              }}
+            >
+              {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            </button>
+            <button className="ghost pressable" onClick={() => setOpen(true)}>
+              Settings
+            </button>
+          </div>
         </div>
       </header>
 
       {live.error ? <div className="error-banner">{live.error}</div> : null}
 
-      <main className={`board ${viewMode === 'director' ? 'board-director' : ''}`}>
+      <main
+        className={`board ${viewMode === 'director' || viewMode === 'grid' ? 'board-director' : ''}`}
+      >
         {live.status !== 'connected' ? (
           <div className="empty">
             <p className="kicker">Control</p>
@@ -543,6 +625,215 @@ export default function App() {
             {!directorEdit && !visibleDirectorTimelines.length ? (
               <p className="help">All timelines are hidden. Tap Edit to show them again.</p>
             ) : null}
+          </section>
+        ) : viewMode === 'grid' ? (
+          <section className="go-grid-view">
+            <header className="director-head">
+              <div>
+                <h2>GO grid</h2>
+                <p className="help">
+                  {gridEdit
+                    ? 'Add buttons and assign each to one cue. Drag to reorder.'
+                    : 'One press fires that cue. Edit to build your page.'}
+                </p>
+              </div>
+              <div className="director-head-actions">
+                {gridEdit ? (
+                  <button className="ghost pressable" onClick={() => void addGoGridButton()}>
+                    Add button
+                  </button>
+                ) : null}
+                <button
+                  className={`ghost pressable ${gridEdit ? 'is-active-view' : ''}`}
+                  aria-pressed={gridEdit}
+                  onClick={() => {
+                    setGridEdit((open) => !open)
+                    setAssigningButtonId(null)
+                    setAssignTimelineId('')
+                  }}
+                >
+                  {gridEdit ? 'Done' : 'Edit'}
+                </button>
+              </div>
+            </header>
+            {settings.goGridButtons.length ? (
+              <div className="go-grid-pads">
+                {settings.goGridButtons.map((button) => {
+                  const { timeline, cue } = resolveGoGridButton(button)
+                  const assigned = Boolean(timeline && cue)
+                  const missing = Boolean(button.timelineId && button.cueId && !assigned)
+                  const cueLabel = cue?.name?.trim() || ''
+                  const timelineLabel =
+                    timeline?.name || (missing ? 'Not in show' : assigned ? '—' : '—')
+                  const isAssigning = assigningButtonId === button.id
+                  const assignTimeline =
+                    live.timelines.find((item) => item.id === assignTimelineId) || live.timelines[0]
+                  return (
+                    <article
+                      key={button.id}
+                      className={`go-grid-pad ${gridEdit ? 'is-editing' : ''} ${dragGridId === button.id ? 'is-dragging' : ''} ${missing ? 'is-missing' : ''} ${!assigned && !missing ? 'is-empty' : ''}`}
+                      draggable={gridEdit && !isAssigning}
+                      onDragStart={(event) => {
+                        if (!gridEdit || isAssigning) {
+                          event.preventDefault()
+                          return
+                        }
+                        event.dataTransfer.effectAllowed = 'move'
+                        setDragGridId(button.id)
+                      }}
+                      onDragEnd={() => setDragGridId(null)}
+                      onDragOver={(event) => {
+                        if (!gridEdit) return
+                        event.preventDefault()
+                        event.dataTransfer.dropEffect = 'move'
+                      }}
+                      onDrop={(event) => {
+                        if (!gridEdit) return
+                        event.preventDefault()
+                        if (dragGridId) void reorderGoGrid(dragGridId, button.id)
+                        setDragGridId(null)
+                      }}
+                    >
+                      {gridEdit ? (
+                        <>
+                          <span className="director-drag" title="Drag to reorder" aria-hidden="true">
+                            ⋮⋮
+                          </span>
+                          {isAssigning ? (
+                            <div className="go-grid-assign">
+                              <p className="kicker">Timeline</p>
+                              <div className="go-grid-pick">
+                                {live.timelines.map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className={`ghost pressable ${assignTimeline?.id === item.id ? 'is-active-view' : ''}`}
+                                    onClick={() => setAssignTimelineId(item.id)}
+                                  >
+                                    {item.name}
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="kicker">Cue</p>
+                              <div className="go-grid-pick">
+                                {(assignTimeline?.cues || []).map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    className="ghost pressable"
+                                    onClick={() =>
+                                      void assignGoGridButton(
+                                        button.id,
+                                        assignTimeline!.id,
+                                        item.id
+                                      )
+                                    }
+                                  >
+                                    {item.name || 'Cue'}
+                                  </button>
+                                ))}
+                                {!assignTimeline?.cues.length ? (
+                                  <p className="help">No cues on this timeline.</p>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                className="ghost pressable"
+                                onClick={() => {
+                                  setAssigningButtonId(null)
+                                  setAssignTimelineId('')
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <strong className="go-grid-label">GO</strong>
+                              {assigned ? (
+                                <span className="go-grid-cue">cue: {cueLabel || '—'}</span>
+                              ) : (
+                                <span className="go-grid-cue is-spacer" aria-hidden="true" />
+                              )}
+                              <span className="go-grid-meta">{timelineLabel}</span>
+                              <div className="go-grid-edit-actions">
+                                <button
+                                  type="button"
+                                  className="ghost pressable"
+                                  onClick={() => {
+                                    setAssigningButtonId(button.id)
+                                    setAssignTimelineId(button.timelineId || live.timelines[0]?.id || '')
+                                  }}
+                                >
+                                  {assigned || missing ? 'Change' : 'Assign'}
+                                </button>
+                                {assigned || missing ? (
+                                  <button
+                                    type="button"
+                                    className="ghost pressable"
+                                    onClick={() => void clearGoGridButton(button.id)}
+                                  >
+                                    Clear
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="ghost pressable"
+                                  onClick={() => void removeGoGridButton(button.id)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="go-grid-fire pressable"
+                          disabled={!assigned}
+                          title={
+                            assigned
+                              ? `${timeline!.name}${cueLabel ? ` · ${cueLabel}` : ''}`
+                              : missing
+                                ? 'Cue not found — Edit to reassign'
+                                : 'Empty — Edit to assign'
+                          }
+                          onClick={() =>
+                            assigned &&
+                            void send({ type: 'go', timelineId: timeline!.id, cueId: cue!.id })
+                          }
+                        >
+                          <span className="go-grid-fire-label">GO</span>
+                          {assigned ? (
+                            <span className="go-grid-fire-cue">cue: {cueLabel || '—'}</span>
+                          ) : (
+                            <span className="go-grid-fire-cue is-spacer" aria-hidden="true" />
+                          )}
+                          <span className="go-grid-fire-meta">{timelineLabel}</span>
+                        </button>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="empty go-grid-empty">
+                <p className="kicker">Grid</p>
+                <h2>No GO buttons yet</h2>
+                <p>Edit, add a button, pick a timeline and cue. Each button fires that cue instantly.</p>
+                {!gridEdit ? (
+                  <button
+                    className="primary pressable"
+                    onClick={() => {
+                      setGridEdit(true)
+                    }}
+                  >
+                    Edit grid
+                  </button>
+                ) : null}
+              </div>
+            )}
           </section>
         ) : (
           <>

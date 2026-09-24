@@ -11,3 +11,4 @@ src/**/*.d.ts
 *.log
 .env
 .env.local
+BACKLOG.md

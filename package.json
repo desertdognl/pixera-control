@@ -1,9 +1,9 @@
 {
   "name": "pixera-control",
-  "version": "0.3.2",
+  "version": "1.0.0",
   "description": "Director / playback control for Pixera 25+",
   "main": "./out/main/index.js",
-  "author": "Pixera Control",
+  "author": "Desert Dog",
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
@@ -15,8 +15,11 @@
     "clean:release": "node scripts/clean-release.mjs",
     "predist": "npm run clean:release",
     "predist:mac": "npm run clean:release",
+    "predist:win": "npm run clean:release",
     "pack:mac": "npm run icon:mac && npm run build && node scripts/update-mac-app.mjs",
-    "dist:mac": "npm run icon:mac && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac"
+    "dist:mac": "npm run icon:mac && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac zip --arm64",
+    "dist:win": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64",
+    "dist": "npm run dist:mac && npm run dist:win"
   },
   "devDependencies": {
     "@types/node": "^22.15.29",
@@ -32,8 +35,9 @@
     "vite": "^6.3.5"
   },
   "build": {
-    "appId": "com.pixeracontrol.app",
+    "appId": "nl.desertdog.pixera-control",
     "productName": "Pixera Control",
+    "copyright": "Copyright © Desert Dog",
     "directories": {
       "output": "release",
       "buildResources": "resources"
@@ -42,16 +46,43 @@
       "out/**/*",
       "package.json"
     ],
+    "extraMetadata": {
+      "main": "./out/main/index.js"
+    },
     "mac": {
       "icon": "icon.icns",
       "category": "public.app-category.utilities",
       "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
       "target": [
         {
-          "target": "dir",
+          "target": "zip",
           "arch": ["arm64"]
         }
-      ]
+      ],
+      "artifactName": "Pixera-Control-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "Pixera-Control-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pixera Control"
     }
   }
 }

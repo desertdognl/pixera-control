@@ -1,7 +1,14 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { cloneSettings, DEFAULT_SETTINGS, type AppSettings, type ConnectionMode, type ViewMode } from '../shared/types'
+import {
+  cloneSettings,
+  DEFAULT_SETTINGS,
+  type AppSettings,
+  type ConnectionMode,
+  type GoGridButton,
+  type ViewMode
+} from '../shared/types'
 
 const FILE_NAME = 'settings.json'
 
@@ -14,7 +21,24 @@ function isMode(value: unknown): value is ConnectionMode {
 }
 
 function isViewMode(value: unknown): value is ViewMode {
-  return value === 'list' || value === 'director'
+  return value === 'list' || value === 'director' || value === 'grid'
+}
+
+function parseGoGridButtons(value: unknown): GoGridButton[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as Partial<GoGridButton>
+      const id = String(raw.id || '').trim()
+      if (!id) return null
+      return {
+        id,
+        timelineId: String(raw.timelineId || ''),
+        cueId: String(raw.cueId || '')
+      }
+    })
+    .filter((item): item is GoGridButton => item != null)
 }
 
 export function loadSettings(): AppSettings {
@@ -36,6 +60,7 @@ export function loadSettings(): AppSettings {
       directorHiddenTimelineIds: Array.isArray(raw.directorHiddenTimelineIds)
         ? raw.directorHiddenTimelineIds.map((id) => String(id)).filter(Boolean)
         : [],
+      goGridButtons: parseGoGridButtons(raw.goGridButtons),
       lockedTimelineIds: Array.isArray(raw.lockedTimelineIds)
         ? raw.lockedTimelineIds.map((id) => String(id)).filter(Boolean)
         : [],

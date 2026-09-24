@@ -1,10 +1,16 @@
 export type ConnectionMode = 'demo' | 'json-tcp-auto'
 export type Appearance = 'dark' | 'light'
-export type ViewMode = 'list' | 'director'
+export type ViewMode = 'list' | 'director' | 'grid'
 export type Transport = 'play' | 'pause' | 'stop' | 'unknown'
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 export const SITE_URL = 'https://desertdog.nl'
+
+export interface GoGridButton {
+  id: string
+  timelineId: string
+  cueId: string
+}
 
 export interface AppSettings {
   host: string
@@ -15,6 +21,7 @@ export interface AppSettings {
   viewMode: ViewMode
   timelinePadOrder: string[]
   directorHiddenTimelineIds: string[]
+  goGridButtons: GoGridButton[]
   lockedTimelineIds: string[]
   confirmStop: boolean
   fadeOnStop: boolean
@@ -30,6 +37,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   viewMode: 'list',
   timelinePadOrder: [],
   directorHiddenTimelineIds: [],
+  goGridButtons: [],
   lockedTimelineIds: [],
   confirmStop: true,
   fadeOnStop: true,
@@ -41,7 +49,8 @@ export function cloneSettings(settings: AppSettings = DEFAULT_SETTINGS): AppSett
     ...settings,
     lockedTimelineIds: [...settings.lockedTimelineIds],
     timelinePadOrder: [...settings.timelinePadOrder],
-    directorHiddenTimelineIds: [...settings.directorHiddenTimelineIds]
+    directorHiddenTimelineIds: [...settings.directorHiddenTimelineIds],
+    goGridButtons: (settings.goGridButtons || []).map((button) => ({ ...button }))
   }
 }
 
