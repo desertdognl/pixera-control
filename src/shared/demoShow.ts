@@ -87,6 +87,7 @@ export class DemoShow {
   }
 
   command(command: ControlCommand): ControlState {
+    this.lastTick = Date.now()
     if (command.type === 'select') this.selectedId = command.timelineId
     if (command.type === 'arm') this.armed = command.armed
     if (command.type === 'global') {
