@@ -1,6 +1,6 @@
 {
   "name": "pixera-control",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Director / playback control for Pixera 25+",
   "main": "./out/main/index.js",
   "author": "Desert Dog",
@@ -35,7 +35,7 @@
     "vite": "^6.3.5"
   },
   "build": {
-    "appId": "nl.desertdog.pixera-control",
+    "appId": "com.pixeracontrol.app",
     "productName": "Pixera Control",
     "copyright": "Copyright © Desert Dog",
     "directories": {
@@ -55,6 +55,10 @@
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Pixera Control connects to Pixera over your local network (JSON/TCP).",
+        "NSAllowsLocalNetworking": true
+      },
       "target": [
         {
           "target": "zip",

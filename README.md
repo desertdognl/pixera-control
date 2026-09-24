@@ -1,8 +1,8 @@
 # Pixera Control
 
-Director / playback control for **Pixera 25+**. Separate from the showcaller timer so a GO cannot live on the same screen as the countdown.
+Director / playback control for **Pixera 25+**. Separate from the showcaller timer (`../Pixera Dashboard`) so a GO cannot live on the same screen as the countdown.
 
-Current version: **1.0.0** — see [CHANGELOG.md](CHANGELOG.md).
+Current version: **1.0.1** — see [CHANGELOG.md](CHANGELOG.md). Agent notes: [AGENTS.md](AGENTS.md).
 
 ## Features
 
@@ -21,8 +21,8 @@ Get the latest build from the [GitHub Releases](https://github.com/desertdognl/p
 
 | Platform | File |
 | --- | --- |
-| macOS (Apple Silicon) | `Pixera-Control-1.0.0-mac-arm64.zip` |
-| Windows (64-bit) | `Pixera-Control-1.0.0-win-x64.exe` (installer) or `.zip` (portable) |
+| macOS (Apple Silicon) | `Pixera-Control-1.0.1-mac-arm64.zip` |
+| Windows (64-bit) | `Pixera-Control-1.0.1-win-x64.exe` (installer) or `.zip` (portable) |
 
 Version numbers in the filenames match the release tag.
 

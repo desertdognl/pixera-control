@@ -3,6 +3,11 @@
 All notable changes to Pixera Control are documented here.
 
 
+## 1.0.1 — 2026-09-24
+
+### Fixed
+- Mac connect: keep previous app id so Local Network permission still applies; sync asar integrity after local pack; add local-network usage text
+
 ## 1.0.0 — 2026-09-24
 
 ### Added

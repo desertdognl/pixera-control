@@ -1,10 +1,12 @@
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
+const plist = require('plist')
 
 const root = resolve('.')
 const appPath = resolve('release/mac-arm64/Pixera Control.app')
@@ -13,7 +15,7 @@ const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).ver
 function buildDirApp() {
   const result = spawnSync(
     'npx',
-    ['electron-builder', '--mac', 'dir', '-c.mac.target=dir'],
+    ['electron-builder', '--mac', 'dir', '-c.mac.target=dir', '--publish', 'never'],
     {
       cwd: root,
       stdio: 'inherit',
@@ -45,8 +47,17 @@ await asar.createPackage(stage, asarPath)
 rmSync(stage, { recursive: true, force: true })
 
 if (existsSync(sourceIcon)) cpSync(sourceIcon, iconPath)
-execFileSync('plutil', ['-replace', 'CFBundleShortVersionString', '-string', version, plistPath])
-execFileSync('plutil', ['-replace', 'CFBundleVersion', '-string', version, plistPath])
+
+const hash = createHash('sha256').update(readFileSync(asarPath)).digest('hex')
+const info = plist.parse(readFileSync(plistPath, 'utf8'))
+info.CFBundleShortVersionString = version
+info.CFBundleVersion = version
+if (info.ElectronAsarIntegrity?.['Resources/app.asar']) {
+  info.ElectronAsarIntegrity['Resources/app.asar'].hash = hash
+} else {
+  delete info.ElectronAsarIntegrity
+}
+writeFileSync(plistPath, plist.build(info))
 
 console.log(`Updated ${appPath} to v${version}`)
 console.log('Quit and reopen the app if it is already running.')

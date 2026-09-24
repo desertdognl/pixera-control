@@ -1,0 +1,12 @@
+---
+description: This folder is Pixera Control only — never edit Dashboard from here
+alwaysApply: true
+---
+
+# Scope
+
+This workspace is **Pixera Control** only.
+
+- All Control code, backlog, changelog, and Mac packaging stay in this folder.
+- Do **not** edit `../Pixera Dashboard` unless the user explicitly asks in a Dashboard session.
+- Details for agents: `AGENTS.md` in this repo root.
