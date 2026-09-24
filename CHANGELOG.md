@@ -3,6 +3,26 @@
 All notable changes to Pixera Control are documented here.
 
 
+## 0.3.2 — 2026-09-24
+
+### Fixed
+- List view always keeps Pixera timeline order; drag reorder only applies in Director
+
+### Notes
+- Marker before Companion GO-grid: git tag `pre-go-grid-0.3.2`, app backup `release/markers/Pixera Control 0.3.2 pre-go-grid.app`
+
+## 0.3.1 — 2026-09-24
+
+### Added
+- Director Edit: Hide pads from the view; Show them again from the Hidden list (saved in settings)
+
+## 0.3.0 — 2026-09-24
+
+### Added
+- Director view: side-by-side timeline pads with Play / Pause / Stop, Prev / Next, and GO
+- Drag-and-drop reorder of director pads (order saved in settings)
+- List / Director toggle in the top bar (List keeps the previous layout)
+
 ## 0.2.5 — 2026-09-24
 
 ### Changed

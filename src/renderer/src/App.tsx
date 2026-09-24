@@ -10,7 +10,8 @@ import {
   type ConnectionMode,
   type LayerItem,
   type TimelineItem,
-  type Transport
+  type Transport,
+  type ViewMode
 } from '@shared/types'
 import { APP_VERSION } from '@shared/version'
 import { DemoShow } from '@shared/demoShow'
@@ -77,6 +78,23 @@ function formatClock(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+function orderTimelines(timelines: TimelineItem[], order: string[]): TimelineItem[] {
+  const byId = new Map(timelines.map((item) => [item.id, item]))
+  const seen = new Set<string>()
+  const ordered: TimelineItem[] = []
+  for (const id of order) {
+    const item = byId.get(id)
+    if (item) {
+      ordered.push(item)
+      seen.add(id)
+    }
+  }
+  for (const item of timelines) {
+    if (!seen.has(item.id)) ordered.push(item)
+  }
+  return ordered
+}
+
 function LockMark({ locked }: { locked: boolean }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="lock-icon">
@@ -140,6 +158,9 @@ export default function App() {
   const [globalStopArmed, setGlobalStopArmed] = useState(false)
   const [globalOpen, setGlobalOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [dragPadId, setDragPadId] = useState<string | null>(null)
+  const [armedByTimeline, setArmedByTimeline] = useState<Record<string, string>>({})
+  const [directorEdit, setDirectorEdit] = useState(false)
 
   useEffect(() => {
     const offState = control.onState(setLive)
@@ -173,6 +194,10 @@ export default function App() {
   }, [draft.appearance])
 
   const selected = live.timelines.find((item) => item.id === live.selectedTimelineId) || live.timelines[0]
+  const orderedTimelines = orderTimelines(live.timelines, settings.timelinePadOrder)
+  const hiddenDirectorIds = new Set(settings.directorHiddenTimelineIds || [])
+  const visibleDirectorTimelines = orderedTimelines.filter((item) => !hiddenDirectorIds.has(item.id))
+  const hiddenDirectorTimelines = orderedTimelines.filter((item) => hiddenDirectorIds.has(item.id))
   const currentCue = selected?.cues.find((cue) => cue.id === selected.currentCueId)
   const selectedCue =
     selected?.cues.find((cue) => cue.id === selectedCueId) ||
@@ -182,6 +207,7 @@ export default function App() {
   const nextCue = selected && selectedIndex >= 0 ? selected.cues[selectedIndex + 1] : undefined
   const prevCue = selected && selectedIndex > 0 ? selected.cues[selectedIndex - 1] : undefined
   const goLabel = selectedCue?.name?.trim() ? `GO · ${selectedCue.name.trim()}` : 'GO'
+  const viewMode: ViewMode = settings.viewMode === 'director' ? 'director' : 'list'
 
   useEffect(() => {
     if (!selected) {
@@ -251,8 +277,52 @@ export default function App() {
     }
   }
 
+  async function setViewMode(next: ViewMode) {
+    await persist({ ...settings, viewMode: next })
+  }
+
+  async function reorderPads(fromId: string, toId: string) {
+    if (fromId === toId) return
+    const ids = orderedTimelines.map((item) => item.id)
+    const from = ids.indexOf(fromId)
+    const to = ids.indexOf(toId)
+    if (from < 0 || to < 0) return
+    const next = [...ids]
+    next.splice(from, 1)
+    next.splice(to, 0, fromId)
+    await persist({ ...settings, timelinePadOrder: next })
+  }
+
+  async function hideDirectorPad(timelineId: string) {
+    if (settings.directorHiddenTimelineIds.includes(timelineId)) return
+    await persist({
+      ...settings,
+      directorHiddenTimelineIds: [...settings.directorHiddenTimelineIds, timelineId]
+    })
+  }
+
+  async function showDirectorPad(timelineId: string) {
+    await persist({
+      ...settings,
+      directorHiddenTimelineIds: settings.directorHiddenTimelineIds.filter((id) => id !== timelineId)
+    })
+  }
+
+  function armedCueFor(timeline: TimelineItem) {
+    const armedId = armedByTimeline[timeline.id]
+    return (
+      timeline.cues.find((cue) => cue.id === armedId) ||
+      timeline.cues.find((cue) => cue.id === timeline.currentCueId) ||
+      timeline.cues[0]
+    )
+  }
+
+  function setArmedFor(timelineId: string, cueId: string) {
+    setArmedByTimeline((current) => ({ ...current, [timelineId]: cueId }))
+  }
+
   return (
-    <div className="app">
+    <div className={`app ${viewMode === 'director' ? 'is-director' : ''}`}>
       <header className="topbar">
         <div className="brand">
           <BrandLink className="brand-mark" src="./icon.png" alt="Desert Dog" />
@@ -300,14 +370,30 @@ export default function App() {
         </div>
         <div className="toolbar">
           {live.status === 'connected' ? (
-            <button
-              className="ghost pressable"
-              disabled={refreshing}
-              title="Reload timelines and cues from Pixera"
-              onClick={() => void refreshShow()}
-            >
-              {refreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
+            <>
+              <div className="view-toggle" role="group" aria-label="View">
+                <button
+                  className={`ghost pressable ${viewMode === 'list' ? 'is-active-view' : ''}`}
+                  onClick={() => void setViewMode('list')}
+                >
+                  List
+                </button>
+                <button
+                  className={`ghost pressable ${viewMode === 'director' ? 'is-active-view' : ''}`}
+                  onClick={() => void setViewMode('director')}
+                >
+                  Director
+                </button>
+              </div>
+              <button
+                className="ghost pressable"
+                disabled={refreshing}
+                title="Reload timelines and cues from Pixera"
+                onClick={() => void refreshShow()}
+              >
+                {refreshing ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </>
           ) : null}
           <button
             className="ghost"
@@ -327,7 +413,7 @@ export default function App() {
 
       {live.error ? <div className="error-banner">{live.error}</div> : null}
 
-      <main className="board">
+      <main className={`board ${viewMode === 'director' ? 'board-director' : ''}`}>
         {live.status !== 'connected' ? (
           <div className="empty">
             <p className="kicker">Control</p>
@@ -344,6 +430,120 @@ export default function App() {
                 : 'JSON/TCP uses the IP and port in Settings. The same port Pixera Dashboard uses.'}
             </p>
           </div>
+        ) : viewMode === 'director' ? (
+          <section className="director-grid">
+            <header className="director-head">
+              <div>
+                <h2>Director</h2>
+                <p className="help">
+                  {directorEdit
+                    ? 'Hide pads you do not need. Show hidden ones below.'
+                    : 'Drag pads to reorder. Each pad has its own GO.'}
+                </p>
+              </div>
+              <div className="director-head-actions">
+                <button
+                  className={`ghost pressable ${directorEdit ? 'is-active-view' : ''}`}
+                  aria-pressed={directorEdit}
+                  onClick={() => setDirectorEdit((open) => !open)}
+                >
+                  {directorEdit ? 'Done' : 'Edit'}
+                </button>
+                <button
+                  className={`ghost pressable global-toggle ${globalOpen ? 'is-open' : ''}`}
+                  aria-expanded={globalOpen}
+                  onClick={() => {
+                    setGlobalOpen((open) => !open)
+                    setGlobalStopArmed(false)
+                  }}
+                >
+                  {globalOpen ? 'Hide controls' : 'Control all'}
+                </button>
+              </div>
+            </header>
+            {globalOpen ? (
+              <div className="global-bar director-global">
+                <p className="global-warn">Applies to unlocked timelines only.</p>
+                <div className="cue-actions">
+                  <button className="ghost pressable" onClick={() => void globalTransport('play')}>
+                    Play all
+                  </button>
+                  <button className="ghost pressable" onClick={() => void globalTransport('pause')}>
+                    Pause all
+                  </button>
+                  <button
+                    className={`ghost pressable ${globalStopArmed ? 'is-confirm-stop' : ''}`}
+                    onClick={() => void globalTransport('stop')}
+                  >
+                    {globalStopArmed ? 'Sure?' : 'Stop all'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <div className="director-pads">
+              {visibleDirectorTimelines.map((timeline) => {
+                const armed = armedCueFor(timeline)
+                const armedIndex = armed ? timeline.cues.findIndex((cue) => cue.id === armed.id) : -1
+                const padPrev = armedIndex > 0 ? timeline.cues[armedIndex - 1] : undefined
+                const padNext =
+                  armedIndex >= 0 && armedIndex < timeline.cues.length - 1
+                    ? timeline.cues[armedIndex + 1]
+                    : undefined
+                return (
+                  <DirectorPad
+                    key={timeline.id}
+                    timeline={timeline}
+                    locked={settings.lockedTimelineIds.includes(timeline.id)}
+                    confirmStop={settings.confirmStop}
+                    armed={armed}
+                    editing={directorEdit}
+                    dragging={dragPadId === timeline.id}
+                    onDragStart={() => setDragPadId(timeline.id)}
+                    onDragEnd={() => setDragPadId(null)}
+                    onDropPad={() => {
+                      if (dragPadId) void reorderPads(dragPadId, timeline.id)
+                      setDragPadId(null)
+                    }}
+                    onToggleLock={() => void toggleLock(timeline.id)}
+                    onHide={() => void hideDirectorPad(timeline.id)}
+                    onCommand={(type) => void send({ type, timelineId: timeline.id })}
+                    onPrev={() => padPrev && setArmedFor(timeline.id, padPrev.id)}
+                    onNext={() => padNext && setArmedFor(timeline.id, padNext.id)}
+                    onGo={() =>
+                      armed && void send({ type: 'go', timelineId: timeline.id, cueId: armed.id })
+                    }
+                    canPrev={!!padPrev}
+                    canNext={!!padNext}
+                  />
+                )
+              })}
+            </div>
+            {directorEdit && hiddenDirectorTimelines.length ? (
+              <div className="director-hidden">
+                <h3>Hidden</h3>
+                <div className="director-hidden-list">
+                  {hiddenDirectorTimelines.map((timeline) => (
+                    <div key={timeline.id} className="director-hidden-row">
+                      <span>{timeline.name}</span>
+                      <button
+                        type="button"
+                        className="ghost pressable"
+                        onClick={() => void showDirectorPad(timeline.id)}
+                      >
+                        Show
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {directorEdit && !visibleDirectorTimelines.length && !hiddenDirectorTimelines.length ? (
+              <p className="help">No timelines connected.</p>
+            ) : null}
+            {!directorEdit && !visibleDirectorTimelines.length ? (
+              <p className="help">All timelines are hidden. Tap Edit to show them again.</p>
+            ) : null}
+          </section>
         ) : (
           <>
             <section className="pane">
@@ -608,6 +808,183 @@ export default function App() {
         </div>
       ) : null}
     </div>
+  )
+}
+
+function DirectorPad({
+  timeline,
+  locked,
+  confirmStop,
+  armed,
+  editing,
+  dragging,
+  onDragStart,
+  onDragEnd,
+  onDropPad,
+  onToggleLock,
+  onHide,
+  onCommand,
+  onPrev,
+  onNext,
+  onGo,
+  canPrev,
+  canNext
+}: {
+  timeline: TimelineItem
+  locked: boolean
+  confirmStop: boolean
+  armed: TimelineItem['cues'][number] | undefined
+  editing: boolean
+  dragging: boolean
+  onDragStart: () => void
+  onDragEnd: () => void
+  onDropPad: () => void
+  onToggleLock: () => void
+  onHide: () => void
+  onCommand: (type: 'play' | 'pause' | 'stop') => void
+  onPrev: () => void
+  onNext: () => void
+  onGo: () => void
+  canPrev: boolean
+  canNext: boolean
+}) {
+  const [stopArmed, setStopArmed] = useState(false)
+  const goLabel = armed?.name?.trim() ? `GO · ${armed.name.trim()}` : 'GO'
+  const current = timeline.cues.find((cue) => cue.id === timeline.currentCueId)
+
+  useEffect(() => {
+    if (!stopArmed) return
+    const timer = window.setTimeout(() => setStopArmed(false), 3000)
+    return () => window.clearTimeout(timer)
+  }, [stopArmed])
+
+  function requestStop() {
+    if (locked) return
+    if (!confirmStop || stopArmed) {
+      setStopArmed(false)
+      onCommand('stop')
+      return
+    }
+    setStopArmed(true)
+  }
+
+  return (
+    <article
+      className={`director-pad ${locked ? 'is-locked' : ''} ${dragging ? 'is-dragging' : ''} ${editing ? 'is-editing' : ''}`}
+      draggable={!editing}
+      onDragStart={(event) => {
+        if (editing) {
+          event.preventDefault()
+          return
+        }
+        event.dataTransfer.effectAllowed = 'move'
+        onDragStart()
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={(event) => {
+        if (editing) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'move'
+      }}
+      onDrop={(event) => {
+        if (editing) return
+        event.preventDefault()
+        onDropPad()
+      }}
+    >
+      <header className="director-pad-top">
+        {!editing ? (
+          <span className="director-drag" title="Drag to reorder" aria-hidden="true">
+            ⋮⋮
+          </span>
+        ) : null}
+        <div className="director-pad-title">
+          <TransportMark mode={timeline.transport} />
+          <div>
+            <strong>{timeline.name}</strong>
+            <p>{current?.name || (timeline.cues.length ? 'Cue' : '—')}</p>
+          </div>
+        </div>
+        {editing ? (
+          <button type="button" className="ghost pressable director-hide" onClick={onHide}>
+            Hide
+          </button>
+        ) : (
+          <button
+            className={`lock-btn pressable ${locked ? 'is-locked' : ''}`}
+            title={locked ? 'Unlock transport' : 'Lock transport'}
+            aria-pressed={locked}
+            onClick={onToggleLock}
+          >
+            <LockMark locked={locked} />
+          </button>
+        )}
+      </header>
+      {!editing ? (
+        <>
+          <div className="director-clock">
+            <span>{formatClock(timeline.positionSeconds)}</span>
+            <span className="timeline-next">
+              {timeline.countdownSeconds == null
+                ? '—'
+                : `next ${formatClock(timeline.countdownSeconds)}`}
+            </span>
+          </div>
+          <div className={`transport-row ${locked ? 'is-locked' : ''}`}>
+            <button
+              className={`transport-btn pressable ${timeline.transport === 'play' ? 'is-active is-play' : ''}`}
+              disabled={locked}
+              onClick={() => {
+                setStopArmed(false)
+                onCommand('play')
+              }}
+            >
+              Play
+            </button>
+            <button
+              className={`transport-btn pressable ${timeline.transport === 'pause' ? 'is-active is-pause' : ''}`}
+              disabled={locked}
+              onClick={() => {
+                setStopArmed(false)
+                onCommand('pause')
+              }}
+            >
+              Pause
+            </button>
+            <button
+              className={`transport-btn pressable ${timeline.transport === 'stop' ? 'is-active is-stop' : ''} ${stopArmed ? 'is-confirm' : ''}`}
+              disabled={locked}
+              onClick={requestStop}
+            >
+              {stopArmed ? 'Sure?' : 'Stop'}
+            </button>
+          </div>
+          <div className="director-cue">
+            <span className="director-armed" title={armed?.name || undefined}>
+              {armed ? armed.name || 'Armed cue' : 'No cues'}
+            </span>
+            <div className="cue-actions">
+              <button className="ghost pressable" disabled={!canPrev} onClick={onPrev}>
+                Prev
+              </button>
+              <button className="ghost pressable" disabled={!canNext} onClick={onNext}>
+                Next
+              </button>
+            </div>
+            <button
+              className="go pressable"
+              disabled={!armed}
+              title={armed?.name?.trim() || undefined}
+              onClick={onGo}
+            >
+              {goLabel}
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="help director-edit-hint">Hidden pads stay connected; they only leave this view.</p>
+      )}
+    </article>
   )
 }
 

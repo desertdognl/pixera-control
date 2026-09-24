@@ -1,6 +1,6 @@
 {
   "name": "pixera-control",
-  "version": "0.2.5",
+  "version": "0.3.2",
   "description": "Director / playback control for Pixera 25+",
   "main": "./out/main/index.js",
   "author": "Pixera Control",

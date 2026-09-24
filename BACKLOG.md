@@ -28,7 +28,7 @@ Live JSON/TCP is in use on a real Pixera (0.1.8). Keep transport and GO off the 
 
 ## Later
 
-- [ ] Multi-timeline director page (side-by-side pads)
+- [x] Multi-timeline director page (side-by-side pads) — **0.3.0** (drag reorder; List view still available)
 - [ ] Companion-style custom GO grid
 - [ ] Optional OSC send for fire-and-forget GO
 - [x] Show project name from Pixera instead of host:port as project label — **0.2.5**

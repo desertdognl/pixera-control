@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { cloneSettings, DEFAULT_SETTINGS, type AppSettings, type ConnectionMode } from '../shared/types'
+import { cloneSettings, DEFAULT_SETTINGS, type AppSettings, type ConnectionMode, type ViewMode } from '../shared/types'
 
 const FILE_NAME = 'settings.json'
 
@@ -11,6 +11,10 @@ function settingsPath(): string {
 
 function isMode(value: unknown): value is ConnectionMode {
   return value === 'demo' || value === 'json-tcp-auto'
+}
+
+function isViewMode(value: unknown): value is ViewMode {
+  return value === 'list' || value === 'director'
 }
 
 export function loadSettings(): AppSettings {
@@ -25,6 +29,13 @@ export function loadSettings(): AppSettings {
       mode: isMode(raw.mode) ? raw.mode : DEFAULT_SETTINGS.mode,
       alwaysOnTop: Boolean(raw.alwaysOnTop),
       appearance: raw.appearance === 'light' ? 'light' : 'dark',
+      viewMode: isViewMode(raw.viewMode) ? raw.viewMode : DEFAULT_SETTINGS.viewMode,
+      timelinePadOrder: Array.isArray(raw.timelinePadOrder)
+        ? raw.timelinePadOrder.map((id) => String(id)).filter(Boolean)
+        : [],
+      directorHiddenTimelineIds: Array.isArray(raw.directorHiddenTimelineIds)
+        ? raw.directorHiddenTimelineIds.map((id) => String(id)).filter(Boolean)
+        : [],
       lockedTimelineIds: Array.isArray(raw.lockedTimelineIds)
         ? raw.lockedTimelineIds.map((id) => String(id)).filter(Boolean)
         : [],

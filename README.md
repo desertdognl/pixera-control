@@ -2,7 +2,9 @@
 
 Director / playback pad for **Pixera 25+**. Separate from the showcaller timer so a GO cannot live on the same screen as the countdown.
 
-Current version: **0.2.5** — see [CHANGELOG.md](CHANGELOG.md).
+Current version: **0.3.2** — see [CHANGELOG.md](CHANGELOG.md).
+
+Rollback before Companion GO-grid: open `release/markers/Pixera Control 0.3.2 pre-go-grid.app`, or `git checkout pre-go-grid-0.3.2`.
 
 Look, logos, and Mac icon geometry match **Pixera Dashboard**.
 

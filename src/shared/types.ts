@@ -1,5 +1,6 @@
 export type ConnectionMode = 'demo' | 'json-tcp-auto'
 export type Appearance = 'dark' | 'light'
+export type ViewMode = 'list' | 'director'
 export type Transport = 'play' | 'pause' | 'stop' | 'unknown'
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -11,6 +12,9 @@ export interface AppSettings {
   mode: ConnectionMode
   alwaysOnTop: boolean
   appearance: Appearance
+  viewMode: ViewMode
+  timelinePadOrder: string[]
+  directorHiddenTimelineIds: string[]
   lockedTimelineIds: string[]
   confirmStop: boolean
   fadeOnStop: boolean
@@ -23,6 +27,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mode: 'demo',
   alwaysOnTop: false,
   appearance: 'dark',
+  viewMode: 'list',
+  timelinePadOrder: [],
+  directorHiddenTimelineIds: [],
   lockedTimelineIds: [],
   confirmStop: true,
   fadeOnStop: true,
@@ -32,7 +39,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
 export function cloneSettings(settings: AppSettings = DEFAULT_SETTINGS): AppSettings {
   return {
     ...settings,
-    lockedTimelineIds: [...settings.lockedTimelineIds]
+    lockedTimelineIds: [...settings.lockedTimelineIds],
+    timelinePadOrder: [...settings.timelinePadOrder],
+    directorHiddenTimelineIds: [...settings.directorHiddenTimelineIds]
   }
 }
 
