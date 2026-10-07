@@ -75,8 +75,19 @@ jobs:
             echo ""
             echo "See the README for first-open steps (Gatekeeper / SmartScreen)."
             echo ""
-            echo "### Changelog"
-            # Section for this version until the next ## heading
+            PREV_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+            if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
+              PREV_VER="${PREV_TAG#v}"
+              echo "### Updates since ${PREV_TAG}"
+              echo ""
+              awk -v prev="$PREV_VER" '
+                $0 ~ "^## " prev " " { exit }
+                $0 ~ /^## [0-9]+\.[0-9]+\.[0-9]+ / { if (!started) started=1; print; next }
+                started { print }
+              ' CHANGELOG.md
+              echo ""
+            fi
+            echo "### ${TAG#v}"
             awk -v ver="${TAG#v}" '
               $0 ~ "^## " ver " " {p=1; next}
               p && /^## / {exit}

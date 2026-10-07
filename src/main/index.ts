@@ -12,6 +12,8 @@ import {
 import { DemoShow } from '../shared/demoShow'
 import { LiveSession } from './liveSession'
 import { loadSettings, saveSettings } from './settingsStore'
+import { requestLocalNetworkAccess } from './localNetworkAccess'
+import { clearDebugLog, exportDebugLog, setDebugLogEnabled, debugLog } from './sessionLogger'
 
 const isDev = !app.isPackaged
 
@@ -151,6 +153,8 @@ async function connectLive(): Promise<ControlState> {
 
 app.whenReady().then(() => {
   settings = loadSettings()
+  setDebugLogEnabled(settings.debugLogging === true)
+  requestLocalNetworkAccess()
   createWindow()
   if (settings.mode === 'demo') startDemo()
   else void connectLive()
@@ -159,22 +163,29 @@ app.whenReady().then(() => {
   ipcMain.handle('get-state', () => live)
   ipcMain.handle('get-app-version', () => APP_VERSION)
   ipcMain.handle('save-settings', (_event, next: AppSettings) => {
+    const prevLog = settings.debugLogging === true
     settings = saveSettings(next)
+    if ((settings.debugLogging === true) !== prevLog) {
+      setDebugLogEnabled(settings.debugLogging === true)
+    }
     mainWindow?.setAlwaysOnTop(settings.alwaysOnTop)
     mainWindow?.webContents.send('settings', settings)
     return settings
   })
   ipcMain.handle('connect', () => {
+    debugLog('CMD', 'connect', { mode: settings.mode, host: settings.host, port: settings.port })
     if (settings.mode !== 'demo') return connectLive()
     stopSession()
     startDemo()
     return live
   })
   ipcMain.handle('disconnect', () => {
+    debugLog('CMD', 'disconnect')
     stopSession()
     return live
   })
   ipcMain.handle('refresh', async () => {
+    debugLog('CMD', 'refresh')
     if (demo) {
       live = demo.snapshot()
       emit()
@@ -186,6 +197,7 @@ app.whenReady().then(() => {
     return live
   })
   ipcMain.handle('command', async (_event, command: ControlCommand) => {
+    debugLog('CMD', 'command', command)
     if (demo) {
       live = demo.command(command)
       emit()
@@ -202,6 +214,11 @@ app.whenReady().then(() => {
     live = await session.command(nextCommand)
     emit()
     return live
+  })
+  ipcMain.handle('export-debug-log', () => exportDebugLog())
+  ipcMain.handle('clear-debug-log', () => {
+    clearDebugLog()
+    return true
   })
   ipcMain.handle('set-fullscreen', (_event, value: boolean) => {
     mainWindow?.setFullScreen(value)

@@ -12,6 +12,13 @@ export interface GoGridButton {
   cueId: string
 }
 
+export interface ConnectionProfile {
+  id: string
+  name: string
+  host: string
+  port: number
+}
+
 export interface AppSettings {
   host: string
   port: number
@@ -22,10 +29,12 @@ export interface AppSettings {
   timelinePadOrder: string[]
   directorHiddenTimelineIds: string[]
   goGridButtons: GoGridButton[]
+  connectionProfiles: ConnectionProfile[]
   lockedTimelineIds: string[]
   confirmStop: boolean
   fadeOnStop: boolean
   fadeOnStopSeconds: number
+  debugLogging: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -38,10 +47,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timelinePadOrder: [],
   directorHiddenTimelineIds: [],
   goGridButtons: [],
+  connectionProfiles: [],
   lockedTimelineIds: [],
   confirmStop: true,
   fadeOnStop: true,
-  fadeOnStopSeconds: 1
+  fadeOnStopSeconds: 1,
+  debugLogging: false
 }
 
 export function cloneSettings(settings: AppSettings = DEFAULT_SETTINGS): AppSettings {
@@ -50,7 +61,8 @@ export function cloneSettings(settings: AppSettings = DEFAULT_SETTINGS): AppSett
     lockedTimelineIds: [...settings.lockedTimelineIds],
     timelinePadOrder: [...settings.timelinePadOrder],
     directorHiddenTimelineIds: [...settings.directorHiddenTimelineIds],
-    goGridButtons: (settings.goGridButtons || []).map((button) => ({ ...button }))
+    goGridButtons: (settings.goGridButtons || []).map((button) => ({ ...button })),
+    connectionProfiles: (settings.connectionProfiles || []).map((profile) => ({ ...profile }))
   }
 }
 

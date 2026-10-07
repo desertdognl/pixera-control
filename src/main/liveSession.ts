@@ -1,6 +1,7 @@
 import type { ControlCommand, ControlState, CueItem, LayerItem, TimelineItem, Transport } from '../shared/types'
 import { EMPTY_CONTROL_STATE } from '../shared/types'
 import { PixeraClient } from './pixeraClient'
+import { debugLog, isDebugLogEnabled } from './sessionLogger'
 
 const READ_GAP_MS = 20
 
@@ -51,6 +52,8 @@ export class LiveSession {
   private pollTick = 0
   private lockedIds = new Set<string>()
   private busy = false
+  private lastOpaqueByName = new Map<string, number>()
+  private softStopQueue: Promise<void> = Promise.resolve()
   private onChange: (() => void) | null = null
 
   setOnChange(handler: (() => void) | null): void {
@@ -63,6 +66,31 @@ export class LiveSession {
 
   private notify(): void {
     this.onChange?.()
+  }
+
+  private rememberOpaque(name: string, opacity: number): void {
+    if (opacity > 0.01) this.lastOpaqueByName.set(name, Math.min(1, Math.max(0, opacity)))
+  }
+
+  /** Prefer current opacity; if already 0 mid-fade, reuse last known non-zero (else 1). */
+  private captureRestoreOpacity(timeline: TimelineItem): number {
+    if (timeline.opacity > 0.01) {
+      this.rememberOpaque(timeline.name, timeline.opacity)
+      return timeline.opacity
+    }
+    return this.lastOpaqueByName.get(timeline.name) ?? 1
+  }
+
+  private enqueueSoftStop(task: () => Promise<void>): void {
+    this.softStopQueue = this.softStopQueue
+      .then(task)
+      .catch((error) => {
+        console.log(`[pixera] soft stop queue: ${error instanceof Error ? error.message : String(error)}`)
+      })
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   async connect(host: string, port: number): Promise<ControlState> {
@@ -176,10 +204,10 @@ export class LiveSession {
       if (command.mode === 'stop' && command.fadeSeconds && command.fadeSeconds > 0) {
         const jobs = targets.map((timeline) => ({
           timeline,
-          restoreOpacity: timeline.opacity
+          restoreOpacity: this.captureRestoreOpacity(timeline)
         }))
         for (const job of jobs) job.timeline.opacity = 0
-        void this.fireGlobalSoftStop(jobs, command.fadeSeconds)
+        this.enqueueSoftStop(() => this.fireGlobalSoftStop(jobs, command.fadeSeconds!))
         return this.snapshot()
       }
       for (const timeline of targets) {
@@ -200,9 +228,9 @@ export class LiveSession {
 
     if (command.type === 'play' || command.type === 'pause' || command.type === 'stop') {
       if (command.type === 'stop' && command.fadeSeconds && command.fadeSeconds > 0) {
-        const restoreOpacity = timeline.opacity
+        const restoreOpacity = this.captureRestoreOpacity(timeline)
         timeline.opacity = 0
-        void this.fireSoftStop(timeline, command.fadeSeconds, restoreOpacity)
+        this.enqueueSoftStop(() => this.fireSoftStop(timeline, command.fadeSeconds!, restoreOpacity))
         return this.snapshot()
       }
       timeline.transport = command.type
@@ -230,6 +258,7 @@ export class LiveSession {
 
     if (command.type === 'opacity') {
       timeline.opacity = Math.min(1, Math.max(0, command.value))
+      this.rememberOpaque(timeline.name, timeline.opacity)
       void this.fireOpacity(timeline, timeline.opacity)
       return this.snapshot()
     }
@@ -333,20 +362,26 @@ export class LiveSession {
     fadeSeconds: number
   ): Promise<void> {
     this.busy = true
+    const prepared: { timeline: TimelineItem; handle: number | string; restoreOpacity: number; frames: number }[] =
+      []
     try {
-      const prepared: { timeline: TimelineItem; handle: number | string; restoreOpacity: number; frames: number }[] =
-        []
       for (const job of jobs) {
         const handle = await this.handleFor(job.timeline.name)
         const fps = await this.fpsFor(job.timeline.name)
         prepared.push({
           timeline: job.timeline,
           handle,
-          restoreOpacity: job.restoreOpacity,
+          restoreOpacity: job.restoreOpacity > 0.01 ? job.restoreOpacity : 1,
           frames: Math.max(1, Math.round(fadeSeconds * fps))
         })
       }
       console.log(`[pixera] global soft stop ${prepared.length} timelines fade ${fadeSeconds}s`)
+      debugLog('INFO', 'soft-stop.global.start', {
+        count: prepared.length,
+        fadeSeconds,
+        names: prepared.map((item) => item.timeline.name),
+        restores: prepared.map((item) => ({ name: item.timeline.name, restore: item.restoreOpacity }))
+      })
       for (const item of prepared) {
         await this.write('Pixera.Timelines.Timeline.startOpacityAnimation', {
           handle: item.handle,
@@ -354,26 +389,40 @@ export class LiveSession {
           fullFadeDuration: item.frames
         })
       }
-      await new Promise((resolve) => setTimeout(resolve, Math.round(fadeSeconds * 1000)))
+      await this.sleep(Math.round(fadeSeconds * 1000) + 80)
       for (const item of prepared) {
-        await this.write('Pixera.Timelines.Timeline.setTransportMode', {
-          handle: item.handle,
-          mode: transportMode('stop')
-        })
-        await this.write('Pixera.Timelines.Timeline.setOpacity', {
-          handle: item.handle,
-          value: item.restoreOpacity
-        })
-        item.timeline.transport = 'stop'
-        item.timeline.positionSeconds = 0
-        item.timeline.countdownSeconds = item.timeline.cues[0] ? item.timeline.cues[0].timeSeconds : null
-        item.timeline.opacity = item.restoreOpacity
-        this.markCurrentCue(item.timeline)
+        try {
+          await this.finishSoftStop(item.timeline, item.handle, item.restoreOpacity)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          console.log(`[pixera] global soft stop restore failed ${item.timeline.name}: ${message}`)
+          this.error = message
+          try {
+            await this.write('Pixera.Timelines.Timeline.setOpacity', {
+              handle: item.handle,
+              value: item.restoreOpacity
+            })
+            item.timeline.opacity = item.restoreOpacity
+          } catch {
+            /* keep trying others */
+          }
+        }
       }
-      this.error = null
+      if (!this.error) this.error = null
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error)
       console.log(`[pixera] global soft stop failed: ${this.error}`)
+      for (const item of prepared) {
+        try {
+          await this.write('Pixera.Timelines.Timeline.setOpacity', {
+            handle: item.handle,
+            value: item.restoreOpacity
+          })
+          item.timeline.opacity = item.restoreOpacity
+        } catch {
+          /* ignore */
+        }
+      }
     } finally {
       this.busy = false
       this.notify()
@@ -386,38 +435,97 @@ export class LiveSession {
     restoreOpacity: number
   ): Promise<void> {
     this.busy = true
+    const restore = restoreOpacity > 0.01 ? restoreOpacity : 1
+    let handle: number | string | null = null
     try {
-      const handle = await this.handleFor(timeline.name)
+      handle = await this.handleFor(timeline.name)
       const fps = await this.fpsFor(timeline.name)
       const frames = Math.max(1, Math.round(fadeSeconds * fps))
-      console.log(`[pixera] soft stop ${timeline.name} fade ${fadeSeconds}s (${frames}f)`)
+      console.log(`[pixera] soft stop ${timeline.name} fade ${fadeSeconds}s (${frames}f) restore ${restore}`)
+      debugLog('INFO', 'soft-stop.start', {
+        name: timeline.name,
+        fadeSeconds,
+        frames,
+        restore,
+        opacityUi: timeline.opacity,
+        transport: timeline.transport
+      })
       await this.write('Pixera.Timelines.Timeline.startOpacityAnimation', {
         handle,
         fadeIn: false,
         fullFadeDuration: frames
       })
-      await new Promise((resolve) => setTimeout(resolve, Math.round(fadeSeconds * 1000)))
-      await this.write('Pixera.Timelines.Timeline.setTransportMode', {
-        handle,
-        mode: transportMode('stop')
-      })
-      await this.write('Pixera.Timelines.Timeline.setOpacity', {
-        handle,
-        value: restoreOpacity
-      })
-      timeline.transport = 'stop'
-      timeline.positionSeconds = 0
-      timeline.countdownSeconds = timeline.cues[0] ? timeline.cues[0].timeSeconds : null
-      timeline.opacity = restoreOpacity
-      this.markCurrentCue(timeline)
+      await this.sleep(Math.round(fadeSeconds * 1000) + 80)
+      const opacityAfterFade = isDebugLogEnabled()
+        ? asNumber(await this.read('Pixera.Timelines.Timeline.getOpacity', { handle }))
+        : null
+      debugLog('INFO', 'soft-stop.afterFadeWait', { name: timeline.name, opacityAfterFade })
+      await this.finishSoftStop(timeline, handle, restore)
       this.error = null
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error)
       console.log(`[pixera] soft stop failed: ${this.error}`)
+      if (handle != null) {
+        try {
+          await this.write('Pixera.Timelines.Timeline.setOpacity', {
+            handle,
+            value: restore
+          })
+          timeline.opacity = restore
+        } catch {
+          /* leave error set */
+        }
+      } else {
+        timeline.opacity = restore
+      }
     } finally {
       this.busy = false
       this.notify()
     }
+  }
+
+  private async finishSoftStop(
+    timeline: TimelineItem,
+    handle: number | string,
+    restoreOpacity: number
+  ): Promise<void> {
+    const opacityBeforeStop = isDebugLogEnabled()
+      ? asNumber(await this.read('Pixera.Timelines.Timeline.getOpacity', { handle }))
+      : null
+    debugLog('INFO', 'soft-stop.finish.beforeStop', {
+      name: timeline.name,
+      opacityBeforeStop,
+      restoreOpacity,
+      transport: timeline.transport
+    })
+    await this.write('Pixera.Timelines.Timeline.setTransportMode', {
+      handle,
+      mode: transportMode('stop')
+    })
+    // Animation can still settle on 0 after stop — set twice with a short gap.
+    await this.write('Pixera.Timelines.Timeline.setOpacity', {
+      handle,
+      value: restoreOpacity
+    })
+    await this.sleep(60)
+    await this.write('Pixera.Timelines.Timeline.setOpacity', {
+      handle,
+      value: restoreOpacity
+    })
+    const opacityAfter = isDebugLogEnabled()
+      ? asNumber(await this.read('Pixera.Timelines.Timeline.getOpacity', { handle }))
+      : null
+    debugLog('INFO', 'soft-stop.finish.afterRestore', {
+      name: timeline.name,
+      opacityAfter,
+      restoreOpacity
+    })
+    timeline.transport = 'stop'
+    timeline.positionSeconds = 0
+    timeline.countdownSeconds = timeline.cues[0] ? timeline.cues[0].timeSeconds : null
+    timeline.opacity = restoreOpacity
+    this.rememberOpaque(timeline.name, restoreOpacity)
+    this.markCurrentCue(timeline)
   }
 
   private async fireTransport(timeline: TimelineItem, mode: 'play' | 'pause' | 'stop'): Promise<void> {
@@ -601,7 +709,10 @@ export class LiveSession {
     if (mode != null) timeline.transport = transportOf(mode)
     if (position != null) timeline.positionSeconds = Math.max(0, position)
     timeline.countdownSeconds = frames == null ? null : Math.max(0, frames / fps)
-    if (opacity != null) timeline.opacity = Math.min(1, Math.max(0, opacity))
+    if (opacity != null) {
+      timeline.opacity = Math.min(1, Math.max(0, opacity))
+      this.rememberOpaque(name, timeline.opacity)
+    }
     this.markCurrentCue(timeline)
   }
 
@@ -622,11 +733,17 @@ export class LiveSession {
 
   private read<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T | null> {
     return this.enqueueRead(() => this.client.call<T>(method, params, 2000)).then(
-      (value) => value,
+      (value) => {
+        if (isDebugLogEnabled() && /getOpacity|getTransportMode|setTransport|startOpacity/i.test(method)) {
+          debugLog('READ', method, { params, value })
+        }
+        return value
+      },
       (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error)
         if (message !== 'Pixera returned an API exception') {
           console.log(`[pixera] ${method} failed: ${message}`)
+          debugLog('ERROR', `${method} failed`, { params, message })
         }
         return null
       }
@@ -635,6 +752,7 @@ export class LiveSession {
 
   private write(method: string, params?: Record<string, unknown>): Promise<unknown> {
     console.log(`[pixera] ${method}`)
+    debugLog('WRITE', method, params)
     return this.enqueueWrite(() => this.client.call(method, params, 1500))
   }
 

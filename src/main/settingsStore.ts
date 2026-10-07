@@ -6,6 +6,7 @@ import {
   DEFAULT_SETTINGS,
   type AppSettings,
   type ConnectionMode,
+  type ConnectionProfile,
   type GoGridButton,
   type ViewMode
 } from '../shared/types'
@@ -41,6 +42,22 @@ function parseGoGridButtons(value: unknown): GoGridButton[] {
     .filter((item): item is GoGridButton => item != null)
 }
 
+function parseConnectionProfiles(value: unknown): ConnectionProfile[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as Partial<ConnectionProfile>
+      const id = String(raw.id || '').trim()
+      const name = String(raw.name || '').trim()
+      const host = String(raw.host || '').trim()
+      if (!id || !name || !host) return null
+      const port = Math.min(65535, Math.max(1, Math.round(Number(raw.port) || 1400)))
+      return { id, name, host, port }
+    })
+    .filter((item): item is ConnectionProfile => item != null)
+}
+
 export function loadSettings(): AppSettings {
   try {
     if (!existsSync(settingsPath())) return cloneSettings()
@@ -61,6 +78,7 @@ export function loadSettings(): AppSettings {
         ? raw.directorHiddenTimelineIds.map((id) => String(id)).filter(Boolean)
         : [],
       goGridButtons: parseGoGridButtons(raw.goGridButtons),
+      connectionProfiles: parseConnectionProfiles(raw.connectionProfiles),
       lockedTimelineIds: Array.isArray(raw.lockedTimelineIds)
         ? raw.lockedTimelineIds.map((id) => String(id)).filter(Boolean)
         : [],
@@ -69,7 +87,8 @@ export function loadSettings(): AppSettings {
       fadeOnStopSeconds: Math.min(
         10,
         Math.max(0.2, Number(raw.fadeOnStopSeconds) || DEFAULT_SETTINGS.fadeOnStopSeconds)
-      )
+      ),
+      debugLogging: raw.debugLogging === true
     })
   } catch {
     return cloneSettings()

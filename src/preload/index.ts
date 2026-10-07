@@ -12,6 +12,8 @@ export interface ControlApi {
   command: (command: ControlCommand) => Promise<ControlState>
   setFullscreen: (value: boolean) => Promise<boolean>
   openUrl: (url: string) => Promise<boolean>
+  exportDebugLog: () => Promise<{ ok: boolean; path?: string; error?: string }>
+  clearDebugLog: () => Promise<boolean>
   onState: (handler: (state: ControlState) => void) => () => void
   onSettings: (handler: (settings: AppSettings) => void) => () => void
 }
@@ -27,6 +29,8 @@ const api: ControlApi = {
   command: (command) => ipcRenderer.invoke('command', command),
   setFullscreen: (value) => ipcRenderer.invoke('set-fullscreen', value),
   openUrl: (url) => ipcRenderer.invoke('open-url', url),
+  exportDebugLog: () => ipcRenderer.invoke('export-debug-log'),
+  clearDebugLog: () => ipcRenderer.invoke('clear-debug-log'),
   onState: (handler) => {
     const listener = (_event: unknown, state: ControlState) => handler(state)
     ipcRenderer.on('control-state', listener)

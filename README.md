@@ -2,7 +2,7 @@
 
 Director / playback control for **Pixera 25+**. Separate from the showcaller timer (`../Pixera Dashboard`) so a GO cannot live on the same screen as the countdown.
 
-Current version: **1.0.1** — see [CHANGELOG.md](CHANGELOG.md). Agent notes: [AGENTS.md](AGENTS.md).
+Current version: **1.0.8** — see [CHANGELOG.md](CHANGELOG.md). Agent notes: [AGENTS.md](AGENTS.md).
 
 ## Features
 
@@ -21,8 +21,8 @@ Get the latest build from the [GitHub Releases](https://github.com/desertdognl/p
 
 | Platform | File |
 | --- | --- |
-| macOS (Apple Silicon) | `Pixera-Control-1.0.1-mac-arm64.zip` |
-| Windows (64-bit) | `Pixera-Control-1.0.1-win-x64.exe` (installer) or `.zip` (portable) |
+| macOS (Apple Silicon) | `Pixera-Control-1.0.8-mac-arm64.zip` |
+| Windows (64-bit) | `Pixera-Control-1.0.8-win-x64.exe` (installer) or `.zip` (portable) |
 
 Version numbers in the filenames match the release tag.
 
@@ -81,7 +81,19 @@ sudo spctl --master-enable
 
 Prefer only `xattr -cr` when possible; `spctl` is a broader system switch.
 
-### Apple Silicon only
+### If Local Network permission never appears
+
+macOS only lists an app after it has asked. Use build **1.0.2+**, quit the app fully, open `Pixera Control.app` from Finder (not only via Terminal), and wait for the Local Network dialog — then Allow.
+
+Still missing from **System Settings → Privacy & Security → Local Network**? In Terminal:
+
+```bash
+tccutil reset LocalNetwork com.pixeracontrol.app
+```
+
+Then open the app again from Finder and allow the prompt.
+
+---
 
 The published Mac build is **arm64** (M1 / M2 / M3 / M4). Intel Macs are not covered in this release.
 

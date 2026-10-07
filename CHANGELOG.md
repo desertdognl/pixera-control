@@ -3,6 +3,41 @@
 All notable changes to Pixera Control are documented here.
 
 
+## 1.0.8 — 2026-10-07
+
+### Added
+- Optional debug log (off by default): Settings toggle, Export log, Clear log — plain-text session file with commands and Pixera write/read (incl. soft-stop opacity)
+
+## 1.0.7 — 2026-10-07
+
+### Fixed
+- Soft stop (fade on Stop): more reliable opacity restore after fade — queue stops, never restore to 0, retry setOpacity, restore on failure
+
+## 1.0.6 — 2026-10-07
+
+### Changed
+- Stronger play (green) and pause (orange) glows; they override the blue selected border
+
+## 1.0.5 — 2026-10-07
+
+### Added
+- Play / Pause glow on timelines in List, Director, and Grid (green when playing, orange when paused)
+
+## 1.0.4 — 2026-10-07
+
+### Changed
+- Director: drag-and-drop reorder works in normal and Edit mode
+
+## 1.0.3 — 2026-09-28
+
+### Added
+- Connection profiles: save IP + port with a name, reselect later, or remove (Settings)
+
+## 1.0.2 — 2026-09-24
+
+### Fixed
+- macOS Local Network: trigger the system permission prompt on launch (Bonjour + probe) so the app can appear under Privacy → Local Network
+
 ## 1.0.1 — 2026-09-24
 
 ### Fixed

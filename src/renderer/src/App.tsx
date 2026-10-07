@@ -12,7 +12,8 @@ import {
   type TimelineItem,
   type Transport,
   type ViewMode,
-  type GoGridButton
+  type GoGridButton,
+  type ConnectionProfile
 } from '@shared/types'
 import { APP_VERSION } from '@shared/version'
 import { DemoShow } from '@shared/demoShow'
@@ -59,6 +60,8 @@ function createLocalControl(): ControlApi {
       window.open(url, '_blank', 'noopener,noreferrer')
       return true
     },
+    exportDebugLog: async () => ({ ok: false, error: 'Debug log export needs the desktop app.' }),
+    clearDebugLog: async () => true,
     onState: (handler) => {
       stateListeners.add(handler)
       return () => stateListeners.delete(handler)
@@ -166,6 +169,9 @@ export default function App() {
   const [dragGridId, setDragGridId] = useState<string | null>(null)
   const [assigningButtonId, setAssigningButtonId] = useState<string | null>(null)
   const [assignTimelineId, setAssignTimelineId] = useState('')
+  const [profileName, setProfileName] = useState('')
+  const [selectedProfileId, setSelectedProfileId] = useState('')
+  const [logExportNote, setLogExportNote] = useState('')
 
   useEffect(() => {
     const offState = control.onState(setLive)
@@ -320,6 +326,55 @@ export default function App() {
 
   async function persistGoGrid(buttons: GoGridButton[]) {
     await persist({ ...settings, goGridButtons: buttons })
+  }
+
+  function applyConnectionProfile(profileId: string) {
+    const profile = (draft.connectionProfiles || []).find((item) => item.id === profileId)
+    setSelectedProfileId(profileId)
+    if (!profile) return
+    setProfileName(profile.name)
+    setDraft((current) => ({
+      ...current,
+      mode: 'json-tcp-auto',
+      host: profile.host,
+      port: profile.port
+    }))
+  }
+
+  async function saveConnectionProfile() {
+    const name = profileName.trim()
+    const host = draft.host.trim()
+    const port = Math.min(65535, Math.max(1, Math.round(Number(draft.port) || 1400)))
+    if (!name || !host || draft.mode === 'demo') return
+    const profiles = [...(draft.connectionProfiles || [])]
+    const existing = selectedProfileId
+      ? profiles.findIndex((item) => item.id === selectedProfileId)
+      : profiles.findIndex((item) => item.name.toLowerCase() === name.toLowerCase())
+    const nextProfile: ConnectionProfile = {
+      id:
+        existing >= 0
+          ? profiles[existing].id
+          : `profile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      host,
+      port
+    }
+    if (existing >= 0) profiles[existing] = nextProfile
+    else profiles.push(nextProfile)
+    const next = { ...draft, host, port, connectionProfiles: profiles, mode: 'json-tcp-auto' as const }
+    setDraft(next)
+    setSelectedProfileId(nextProfile.id)
+    await persist(next)
+  }
+
+  async function removeConnectionProfile() {
+    if (!selectedProfileId) return
+    const profiles = (draft.connectionProfiles || []).filter((item) => item.id !== selectedProfileId)
+    const next = { ...draft, connectionProfiles: profiles }
+    setDraft(next)
+    setSelectedProfileId('')
+    setProfileName('')
+    await persist(next)
   }
 
   async function addGoGridButton() {
@@ -519,7 +574,7 @@ export default function App() {
                 <h2>Director</h2>
                 <p className="help">
                   {directorEdit
-                    ? 'Hide pads you do not need. Show hidden ones below.'
+                    ? 'Drag pads to reorder. Hide pads you do not need; Show them again below.'
                     : 'Drag pads to reorder. Each pad has its own GO.'}
                 </p>
               </div>
@@ -671,7 +726,7 @@ export default function App() {
                   return (
                     <article
                       key={button.id}
-                      className={`go-grid-pad ${gridEdit ? 'is-editing' : ''} ${dragGridId === button.id ? 'is-dragging' : ''} ${missing ? 'is-missing' : ''} ${!assigned && !missing ? 'is-empty' : ''}`}
+                      className={`go-grid-pad ${gridEdit ? 'is-editing' : ''} ${dragGridId === button.id ? 'is-dragging' : ''} ${missing ? 'is-missing' : ''} ${!assigned && !missing ? 'is-empty' : ''} ${timeline?.transport === 'play' ? 'is-playing' : ''} ${timeline?.transport === 'pause' ? 'is-paused' : ''}`}
                       draggable={gridEdit && !isAssigning}
                       onDragStart={(event) => {
                         if (!gridEdit || isAssigning) {
@@ -1004,6 +1059,53 @@ export default function App() {
                 </div>
               </div>
               <div className="field">
+                <label htmlFor="connection-profile">Connection profile</label>
+                <select
+                  id="connection-profile"
+                  value={selectedProfileId}
+                  disabled={draft.mode === 'demo'}
+                  onChange={(event) => applyConnectionProfile(event.target.value)}
+                >
+                  <option value="">Select a saved profile…</option>
+                  {(draft.connectionProfiles || []).map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name} ({profile.host}:{profile.port})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="profile-name">Save profile as</label>
+                <div className="profile-save-row">
+                  <input
+                    id="profile-name"
+                    value={profileName}
+                    disabled={draft.mode === 'demo'}
+                    placeholder="e.g. Main Pixera"
+                    onChange={(event) => setProfileName(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="ghost pressable"
+                    disabled={draft.mode === 'demo' || !profileName.trim() || !draft.host.trim()}
+                    onClick={() => void saveConnectionProfile()}
+                  >
+                    Save profile
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost pressable"
+                    disabled={!selectedProfileId}
+                    onClick={() => void removeConnectionProfile()}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <p className="help profile-help">
+                  Saves the current IP and port under a name. Select a profile to load it again.
+                </p>
+              </div>
+              <div className="field">
                 <label>Appearance</label>
                 <div className="theme-toggle">
                   <button
@@ -1071,6 +1173,60 @@ export default function App() {
                     setDraft((current) => ({ ...current, alwaysOnTop: event.target.checked }))
                   }
                 />
+              </div>
+              <div className="field">
+                <label>Debug log</label>
+                <p className="help profile-help">
+                  Off by default. Turn on when something looks wrong, reproduce it, then export the
+                  .log file to share.
+                </p>
+                <div className="check">
+                  <label htmlFor="debug-log">Write debug log</label>
+                  <input
+                    id="debug-log"
+                    type="checkbox"
+                    checked={draft.debugLogging === true}
+                    onChange={(event) => {
+                      const debugLogging = event.target.checked
+                      setLogExportNote(
+                        debugLogging
+                          ? 'Debug log on — reproduce the issue, then Export log.'
+                          : 'Debug log off'
+                      )
+                      const next = { ...draft, debugLogging }
+                      setDraft(next)
+                      void persist(next)
+                    }}
+                  />
+                </div>
+                <div className="profile-save-row" style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="ghost pressable"
+                    onClick={async () => {
+                      await persist(draft)
+                      const result = await control.exportDebugLog()
+                      setLogExportNote(
+                        result.ok
+                          ? `Saved: ${result.path}`
+                          : result.error || 'Export failed'
+                      )
+                    }}
+                  >
+                    Export log…
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost pressable"
+                    onClick={async () => {
+                      await control.clearDebugLog()
+                      setLogExportNote('Log cleared')
+                    }}
+                  >
+                    Clear log
+                  </button>
+                </div>
+                {logExportNote ? <p className="help profile-help">{logExportNote}</p> : null}
               </div>
               <BrandLink className="settings-logo" src="./logo_full_white.png" alt="Desert Dog" />
               <p className="help">Pixera Control v{appVersion}</p>
@@ -1161,34 +1317,26 @@ function DirectorPad({
 
   return (
     <article
-      className={`director-pad ${locked ? 'is-locked' : ''} ${dragging ? 'is-dragging' : ''} ${editing ? 'is-editing' : ''}`}
-      draggable={!editing}
+      className={`director-pad ${locked ? 'is-locked' : ''} ${dragging ? 'is-dragging' : ''} ${editing ? 'is-editing' : ''} ${timeline.transport === 'play' ? 'is-playing' : ''} ${timeline.transport === 'pause' ? 'is-paused' : ''}`}
+      draggable
       onDragStart={(event) => {
-        if (editing) {
-          event.preventDefault()
-          return
-        }
         event.dataTransfer.effectAllowed = 'move'
         onDragStart()
       }}
       onDragEnd={onDragEnd}
       onDragOver={(event) => {
-        if (editing) return
         event.preventDefault()
         event.dataTransfer.dropEffect = 'move'
       }}
       onDrop={(event) => {
-        if (editing) return
         event.preventDefault()
         onDropPad()
       }}
     >
       <header className="director-pad-top">
-        {!editing ? (
-          <span className="director-drag" title="Drag to reorder" aria-hidden="true">
-            ⋮⋮
-          </span>
-        ) : null}
+        <span className="director-drag" title="Drag to reorder" aria-hidden="true">
+          ⋮⋮
+        </span>
         <div className="director-pad-title">
           <TransportMark mode={timeline.transport} />
           <div>
@@ -1197,7 +1345,12 @@ function DirectorPad({
           </div>
         </div>
         {editing ? (
-          <button type="button" className="ghost pressable director-hide" onClick={onHide}>
+          <button
+            type="button"
+            className="ghost pressable director-hide"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={onHide}
+          >
             Hide
           </button>
         ) : (
@@ -1205,6 +1358,7 @@ function DirectorPad({
             className={`lock-btn pressable ${locked ? 'is-locked' : ''}`}
             title={locked ? 'Unlock transport' : 'Lock transport'}
             aria-pressed={locked}
+            onMouseDown={(event) => event.stopPropagation()}
             onClick={onToggleLock}
           >
             <LockMark locked={locked} />
@@ -1336,7 +1490,7 @@ function TimelineRow({
   }
 
   return (
-    <article className={`timeline-card ${selected ? 'is-selected' : ''} ${locked ? 'is-locked' : ''}`}>
+    <article className={`timeline-card ${selected ? 'is-selected' : ''} ${locked ? 'is-locked' : ''} ${timeline.transport === 'play' ? 'is-playing' : ''} ${timeline.transport === 'pause' ? 'is-paused' : ''}`}>
       <div className="timeline-top">
         <button className="timeline-select" onClick={onSelect}>
           <div className="timeline-title">
